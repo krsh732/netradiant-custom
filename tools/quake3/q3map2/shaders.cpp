@@ -537,7 +537,7 @@ void EmitVertexRemapShader( char *from, char *to ){
    allocates and initializes a new shader
  */
 
-static shaderInfo_t *AllocShaderInfo(){
+shaderInfo_t *AllocShaderInfo(){
 	shaderInfo_t    *si;
 
 

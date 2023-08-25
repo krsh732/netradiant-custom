@@ -119,6 +119,7 @@ class SurfaceInspector : public Dialog
 
 	QCheckBox* m_surfaceFlags[32];
 	QCheckBox* m_contentFlags[32];
+	QCheckBox* m_clearShaderFlags[2];
 
 	NonModalEntry *m_valueEntry;
 public:
@@ -832,10 +833,11 @@ void SurfaceInspector::BuildDialog(){
 				grid->addWidget( patch_tesselation_create(), 3, 2, 1, 2 );
 			}
 		}
-		if ( !string_empty( g_pGameDescription->getKeyValue( "si_flags" ) ) )
+		const char *si_flags = g_pGameDescription->getKeyValue( "si_flags" );
+		if ( !string_empty( si_flags ) )
 		{
 			{
-				auto *frame = new QGroupBox( "Surface Flags" );
+				auto *frame = new QGroupBox( "Show Surface Flags Editor" );
 				frame->setCheckable( true );
 				frame->setChecked( false );
 				vbox->addWidget( frame );
@@ -845,6 +847,12 @@ void SurfaceInspector::BuildDialog(){
 				auto *container = new QWidget;
 				box->addWidget( container );
 				auto *grid = new QGridLayout( container );
+				int rowOffset = 0;
+				if ( string_equal_nocase(si_flags, "quake3") ) {
+					m_clearShaderFlags[0] = new QCheckBox("Clear Shader Value");
+					grid->addWidget(m_clearShaderFlags[0], rowOffset++, 0, 1, 4, Qt::AlignHCenter);
+					QObject::connect( m_clearShaderFlags[0], &QAbstractButton::clicked, ApplyFlagsCaller( *this ) );
+				}
 
 				// QObject::connect( frame, &QGroupBox::clicked, container, &QWidget::setVisible );
 				QObject::connect( frame, &QGroupBox::clicked, [container, wnd = GetWidget()]( bool checked ){
@@ -861,7 +869,7 @@ void SurfaceInspector::BuildDialog(){
 						for ( int r = 0; r != 8; ++r )
 						{
 							auto *check = new QCheckBox( getSurfaceFlagName( c * 8 + r ) );
-							grid->addWidget( check, r, c );
+							grid->addWidget( check, r + rowOffset, c );
 							*p++ = check;
 							QObject::connect( check, &QAbstractButton::clicked, ApplyFlagsCaller( *this ) );
 						}
@@ -869,7 +877,7 @@ void SurfaceInspector::BuildDialog(){
 				}
 			}
 			{
-				auto *frame = new QGroupBox( "Content Flags" );
+				auto *frame = new QGroupBox( "Show Content Flags Editor" );
 				frame->setCheckable( true );
 				frame->setChecked( false );
 				vbox->addWidget( frame );
@@ -879,6 +887,12 @@ void SurfaceInspector::BuildDialog(){
 				auto *container = new QWidget;
 				box->addWidget( container );
 				auto *grid = new QGridLayout( container );
+				int rowOffset = 0;
+				if ( string_equal_nocase(si_flags, "quake3") ) {
+					m_clearShaderFlags[1] = new QCheckBox("Clear Shader Value");
+					grid->addWidget(m_clearShaderFlags[1], rowOffset++, 0, 1, 4, Qt::AlignHCenter);
+					QObject::connect( m_clearShaderFlags[1], &QAbstractButton::clicked, ApplyFlagsCaller( *this ) );
+				}
 
 				QObject::connect( frame, &QGroupBox::clicked, [container, wnd = GetWidget()]( bool checked ){
 					container->setVisible( checked );
@@ -894,7 +908,7 @@ void SurfaceInspector::BuildDialog(){
 						for ( int r = 0; r != 8; ++r )
 						{
 							auto *check = new QCheckBox( getContentFlagName( c * 8 + r ) );
-							grid->addWidget( check, r, c );
+							grid->addWidget( check, r + rowOffset, c );
 							*p++ = check;
 							QObject::connect( check, &QAbstractButton::clicked, ApplyFlagsCaller( *this ) );
 						}
@@ -903,7 +917,7 @@ void SurfaceInspector::BuildDialog(){
 					m_contentFlags[BRUSH_DETAIL_FLAG]->setEnabled( false );
 				}
 			}
-			{
+			if ( si_flags && !string_equal_nocase(si_flags, "quake3") ) {
 				auto *frame = new QGroupBox( "Value" );
 				vbox->addWidget( frame );
 				{
@@ -922,6 +936,7 @@ void SurfaceInspector::BuildDialog(){
 			}
 		}
 	}
+	GetWidget()->adjustSize();
 }
 
 /*
@@ -983,10 +998,16 @@ void SurfaceInspector::Update(){
 
 	patch_tesselation_update();
 
-	if ( !string_empty( g_pGameDescription->getKeyValue( "si_flags" ) ) ) {
+	const char *si_flags = g_pGameDescription->getKeyValue( "si_flags" );
+	if ( !string_empty( si_flags ) ) {
 		ContentsFlagsValue flags( SurfaceInspector_GetSelectedFlags() );
 
-		entry_set_int( m_valueEntry, flags.m_value );
+		if ( !string_equal_nocase(si_flags, "quake3") ) {
+			entry_set_int( m_valueEntry, flags.m_value );
+		} else {
+			m_clearShaderFlags[0]->setChecked(flags.m_value & 1);
+			m_clearShaderFlags[1]->setChecked(flags.m_value & 2);
+		}
 
 		for ( QCheckBox** p = m_surfaceFlags; p != m_surfaceFlags + 32; ++p )
 		{
@@ -1100,8 +1121,17 @@ void SurfaceInspector::ApplyFlags(){
 		}
 	}
 
-	int value = entry_get_int( m_valueEntry );
-
+	int value = 0;
+	if ( !string_equal_nocase(g_pGameDescription->getKeyValue( "si_flags" ), "quake3") ) {
+		value = entry_get_int( m_valueEntry );
+	} else {
+		if (m_clearShaderFlags[0]->isChecked()) {
+			value |= 1;
+		}
+		if (m_clearShaderFlags[1]->isChecked()) {
+			value |= 2;
+		}
+	}
 	UndoableCommand undo( "flagsSetSelected" );
 	Select_SetFlags( ContentsFlagsValue( surfaceflags, contentflags, value, true ) );
 }

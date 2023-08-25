@@ -30,6 +30,61 @@
 
 /* dependencies */
 #include "q3map2.h"
+#include <tuple>
+#include <utility>
+#include <functional>
+#include <unordered_map>
+
+// thanks to: https://stackoverflow.com/a/9815205
+template <class T>
+inline void hash_combine(std::size_t & seed, const T & v)
+{
+    std::hash<T> hasher;
+    seed ^= hasher(v) + 0x9e3779b9 + (seed << 6) + (seed >> 2);
+}
+
+template <class Tuple, std::size_t Index = std::tuple_size<Tuple>::value - 1>
+struct tuple_hash_impl
+{
+    static inline void apply(std::size_t & seed, Tuple const & tuple)
+    {
+        tuple_hash_impl<Tuple, Index - 1>::apply(seed, tuple);
+        hash_combine(seed, std::get<Index>(tuple));
+    }
+};
+
+template <class Tuple>
+struct tuple_hash_impl<Tuple, 0>
+{
+    static inline void apply(std::size_t & seed, Tuple const & tuple)
+    {
+        hash_combine(seed, std::get<0>(tuple));
+    }
+};
+
+namespace std
+{
+    template<typename S, typename T> struct hash<pair<S, T>>
+    {
+        inline size_t operator()(const pair<S, T> & v) const
+        {
+            size_t seed = 0;
+            ::hash_combine(seed, v.first);
+            ::hash_combine(seed, v.second);
+            return seed;
+        }
+    };
+
+    template<typename ...Args> struct hash<tuple<Args...>>
+    {
+        inline size_t operator()(const tuple<Args...> & v) const
+        {
+            size_t seed = 0;
+            tuple_hash_impl<tuple<Args...>>::apply(seed, v);
+            return seed;
+        }
+    };
+}
 
 
 
@@ -41,7 +96,7 @@
 
 namespace{
 int planehash[ PLANE_HASHES ];
-
+std::unordered_map<std::tuple<int, int, int>, shaderInfo_t*> shaderInfoMap;
 int c_boxbevels;
 int c_edgebevels;
 int c_areaportals;
@@ -1007,7 +1062,6 @@ static void ParseRawBrush( bool onlyLights ){
 		/* set default flags and values */
 		shaderInfo_t *si = onlyLights? &shaderInfo[ 0 ]
 		                             : ShaderInfoForShader( shader );
-		side.shaderInfo = si;
 		side.surfaceFlags = si->surfaceFlags;
 		side.contentFlags = si->contentFlags;
 		side.compileFlags = si->compileFlags;
@@ -1086,16 +1140,38 @@ static void ParseRawBrush( bool onlyLights ){
 		if ( TokenAvailable() ) {
 			/* get detail bit from map content flags */
 			GetToken( false );
-			const int flags = atoi( token );
-			if ( flags & C_DETAIL ) {
+			side.contentFlags = atoi( token );
+			if ( side.contentFlags & C_DETAIL ) {
 				side.compileFlags |= C_DETAIL;
 			}
 
-			/* historical */
 			GetToken( false );
-			//% td.flags = atoi( token );
+			side.surfaceFlags = atoi( token );
+
 			GetToken( false );
-			//% td.value = atoi( token );
+			int value = atoi( token );
+			if ( !(value & 1) ) {
+				side.surfaceFlags |= si->surfaceFlags;
+			}
+			if ( !(value & 2) ) {
+				side.contentFlags |= si->contentFlags;
+			}
+		}
+
+		if (si->surfaceFlags == side.surfaceFlags && si->contentFlags == side.contentFlags) {
+			side.shaderInfo = si;
+		} else {
+			auto key = std::make_tuple(si - shaderInfo, side.surfaceFlags, side.contentFlags);
+			auto shaderKeyValuePair = shaderInfoMap.find(key);
+			if (shaderKeyValuePair != shaderInfoMap.end()) {
+				side.shaderInfo = shaderKeyValuePair->second;
+			} else {
+				side.shaderInfo = AllocShaderInfo();
+				*side.shaderInfo = *si;
+				side.shaderInfo->surfaceFlags = side.surfaceFlags;
+				side.shaderInfo->contentFlags = side.contentFlags;
+				shaderInfoMap[key] = side.shaderInfo;
+			}
 		}
 	}
 

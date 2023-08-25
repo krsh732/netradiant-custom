@@ -1691,6 +1691,7 @@ void                        EmitVertexRemapShader( char *from, char *to );
 void                        LoadShaderInfo();
 shaderInfo_t                *ShaderInfoForShader( const char *shader );
 shaderInfo_t                *ShaderInfoForShaderNull( const char *shader );
+shaderInfo_t                *AllocShaderInfo();
 
 
 /* bspfile_abstract.c */
